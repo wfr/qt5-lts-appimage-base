@@ -1,0 +1,94 @@
+# Build environment aimed at Qt5 AppImages with a high degree of compatibility.
+#
+# - appimagecrafters/appimage-builder
+#   + Ubuntu 18.04 LTS
+#   + GCC 8
+#
+# - Qt 5 with KDE's LTS bug fixes
+#   + Installed in /opt/Qt/5.15-kde/
+# 
+# - linuxdeployqt
+  
+FROM docker.io/appimagecrafters/appimage-builder
+
+ARG QT_PREFIX=/opt/Qt/5.15-kde/
+ARG QT_BRANCH=kde/5.15
+
+# Basics:
+RUN apt-get update && \
+    apt-get install -y build-essential git wget python3-pip
+
+# Latest cmake
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null |gpg --dearmor - |tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null && \
+    echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main' |tee /etc/apt/sources.list.d/kitware.list && \
+    apt-get update && \
+    apt-get install -y cmake
+
+# GCC 11
+# Not recommended.  This libstdc++ is incompatible with older distros, and
+# AppImage does not bundle libstdc++.  You can circument this restriction with
+# a patched AppImage loader. Personally I prefer to avoid such hacks and stick
+# with GCC-8 instead.
+# <https://github.com/darealshinji/AppImageKit-checkrt/>
+#RUN apt-get install -y software-properties-common && \
+#    add-apt-repository ppa:ubuntu-toolchain-r/test && \
+#    apt-get update && \
+#    apt-get install -y gcc-11 g++-11 && \
+#    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11 && \
+#    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
+
+# GCC 8
+RUN apt-get install -y gcc-8 g++-8 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 8 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 8
+
+# Qt 5 KDE LTS branch <https://community.kde.org/Qt5PatchCollection>
+RUN \
+    echo "deb-src http://archive.ubuntu.com/ubuntu/ bionic main" >> /etc/apt/sources.list && \
+    echo "deb-src http://archive.ubuntu.com/ubuntu/ bionic-updates main" >> /etc/apt/sources.list && \
+    echo "deb-src http://security.ubuntu.com/ubuntu/ bionic-security main" >> /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get build-dep -y qtbase-opensource-src && \
+    apt-get install -y libxcb-util0-dev xutils-dev && \
+    apt-get install -y libxcb*-dev  # maybe overkill
+
+RUN mkdir -p /opt/qt-src && cd /opt/qt-src && \
+    git clone https://invent.kde.org/qt/qt/qt5.git -b ${QT_BRANCH} && \
+    cd qt5 && \
+    git clone https://invent.kde.org/qt/qt/qtbase.git -b ${QT_BRANCH} && \
+    # git clone https://invent.kde.org/qt/qt/qtdeclarative.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/wfr/qtdeclarative.git -b 5.15-fix-QTBUG-56075 && \
+    git clone https://invent.kde.org/qt/qt/qtgraphicaleffects.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qtimageformats.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qtmultimedia.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qtquickcontrols.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qtquickcontrols2.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qtsvg.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qttools.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qttranslations.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qtx11extras.git -b ${QT_BRANCH} && \
+    git clone https://invent.kde.org/qt/qt/qtxmlpatterns.git -b ${QT_BRANCH}
+
+RUN cd /opt/qt-src/qt5 && \
+    # https://bugreports.qt.io/browse/QTBUG-85922 \
+    sed -ir 's@/usr/X11R6/lib64@/usr/lib/x86_64-linux-gnu@' qtbase/mkspecs/linux-g++-64/qmake.conf && \
+    ./configure -opensource -confirm-license \
+    --prefix=${QT_PREFIX} -platform linux-g++-64 -no-avx \
+    -opengl desktop -qpa xcb -xcb -xcb-xlib \
+    -skip qt3d -skip qtandroidextras -skip qtcanvas3d -skip qtconnectivity -skip qtdatavis3d \
+    -skip qtdoc -skip qtgamepad -skip qtlocation -skip qtmacextras -skip qtnetworkauth -skip qtpurchasing \
+    -skip qtscript -skip qtscxml -skip qtsensors -skip qtspeech \
+    -skip qtvirtualkeyboard -skip qtwayland -skip qtwebchannel -skip qtwebengine -skip qtwebview \
+    -skip qtwinextras -skip qtx11extras -skip gamepad -skip location -skip webengine \
+    -nomake examples -nomake tests -nomake tools && \
+    make -j$(nproc) && \
+    make -j$(nproc) install
+
+# https://github.com/probonopd/linuxdeployqt
+RUN cd /root && \
+    wget -c -nv "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage" && \
+    chmod +x ./linuxdeployqt-continuous-x86_64.AppImage && \
+    ./linuxdeployqt-continuous-x86_64.AppImage --appimage-extract && \
+    rm linuxdeployqt-continuous-x86_64.AppImage && \
+    mv squashfs-root deployqt && \
+    ln -s /root/deployqt/AppRun /usr/sbin/linuxdeployqt
