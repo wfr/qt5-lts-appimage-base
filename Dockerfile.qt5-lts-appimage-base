@@ -56,8 +56,7 @@ RUN mkdir -p /opt/qt-src && cd /opt/qt-src && \
     git clone https://invent.kde.org/qt/qt/qt5.git -b ${QT_BRANCH} && \
     cd qt5 && \
     git clone https://invent.kde.org/qt/qt/qtbase.git -b ${QT_BRANCH} && \
-    # git clone https://invent.kde.org/qt/qt/qtdeclarative.git -b ${QT_BRANCH} && \
-    git clone https://invent.kde.org/wfr/qtdeclarative.git -b 5.15-fix-QTBUG-56075 && \
+    git clone https://invent.kde.org/qt/qt/qtdeclarative.git -b ${QT_BRANCH} && \
     git clone https://invent.kde.org/qt/qt/qtgraphicaleffects.git -b ${QT_BRANCH} && \
     git clone https://invent.kde.org/qt/qt/qtimageformats.git -b ${QT_BRANCH} && \
     git clone https://invent.kde.org/qt/qt/qtmultimedia.git -b ${QT_BRANCH} && \
